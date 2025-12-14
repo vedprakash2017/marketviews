@@ -1,0 +1,27 @@
+
+# Core Architecture
+pydantic>=2.5.0        # Data validation
+pyyaml>=6.0            # Config management
+python-dotenv>=1.0.0   # Secrets management
+
+# Async & Networking
+asyncio                # Concurrency
+aiofiles>=23.0.0       # Non-blocking file I/O
+
+# Module 1: Scraper
+playwright>=1.48.0     # Browser automation
+playwright-stealth==1.0.6  # Anti-bot detection
+
+# Module 2 & 4: Data & Storage
+pandas>=2.1.0          # Dataframes
+numpy>=1.26.0          # Math
+pyarrow>=14.0.0        # Parquet engine (fast storage)
+redis>=5.0.1           # Message Broker
+
+# Module 3: Analytics
+scikit-learn>=1.3.0    # TF-IDF & ML
+
+# Module 5: Visualization (Future proofing)
+streamlit>=1.28.0
+plotly>=5.18.0
+watchdog>=3.0.0        # For auto-reloading logs

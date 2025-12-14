@@ -1,0 +1,42 @@
+
+app:
+  name: "MarketIntelligence_v1"
+  environment: "development"  
+  debug: true
+
+acquisition:
+  source_type: "twitter"  
+  
+  twitter:
+    headless: false       # Set to true for production server
+    user_data_dir: "./user_data" # Where to store cookies
+    max_scrolls: 5        # Safety limit to prevent infinite loops
+    scroll_delay: 2.5     # Seconds between scrolls (Humanize)
+    
+  # Targets
+  targets:
+    - "#nifty50"
+    - "#banknifty"
+    - "#stockmarketindia"
+    
+  # Loop Settings
+  loop_interval: 300      # Run every 5 minutes (300s)
+
+# --- MODULE 2: PROCESSING ---
+processing:
+  dedup_enabled: true
+  bloom_filter_capacity: 100000
+  bloom_filter_error_rate: 0.001
+
+# --- MODULE 4: STORAGE ---
+storage:
+  engine: "parquet"
+  output_path: "./data/raw"
+  batch_size: 50           # Write to disk after 50 tweets (small for testing)
+  compression: "snappy"
+
+# --- LOGGING ---
+logging:
+  level: "INFO"
+  save_to_file: true
+  file_path: "./logs/system.log"
