@@ -1,4 +1,10 @@
 env
 data
 config/secrets.env
+config/cookies.json
 .env
+pw-browsers
+*.png
+*.html
+twitter_*
+*.pyc
