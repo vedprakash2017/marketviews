@@ -1,11 +1,13 @@
 import time
 import asyncio
 import random
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import List
 from playwright.sync_api import sync_playwright
-from src.shared.interfaces import IDataSource, RawTweet
+from src.shared.interfaces import IDataSource
+from src.shared.types import RawTweet  # Use Pydantic version with all fields
 from src.modules.acquisition.sources.twitter_auth import TwitterAuth
 from src.modules.acquisition.sources.twitter_settings import TwitterSettings
 
@@ -137,6 +139,9 @@ class TwitterPlaywrightSource(IDataSource):
         print(f"   [TwitterSource] 📝 Extracting from {len(articles)} articles...")
         
         for idx, article in enumerate(articles):
+            if len(tweets) >= limit:
+                break
+                
             try:
                 # Random pause to simulate human reading
                 if idx > 0:
@@ -146,17 +151,49 @@ class TwitterPlaywrightSource(IDataSource):
                     )
                     time.sleep(pause)
                 
+                # Extract tweet text
                 text = article.locator('div[data-testid="tweetText"]').inner_text()
                 
+                # Extract tweet ID from status URL
+                tweet_id = f"unknown_{idx}"  # Fallback
+                try:
+                    tweet_link = article.locator('a[href*="/status/"]').first
+                    if tweet_link:
+                        href = tweet_link.get_attribute('href')
+                        if href and '/status/' in href:
+                            tweet_id = href.split('/status/')[-1].split('?')[0]
+                except:
+                    pass
+                
+                # Extract username
+                username = "unknown"
+                try:
+                    # Try to get username from the User-Name section
+                    username_elem = article.locator('div[data-testid="User-Name"] a[role="link"]').first
+                    if username_elem:
+                        username_text = username_elem.inner_text()
+                        # Clean up - sometimes includes @handle and display name
+                        if username_text:
+                            # Take first line and remove @ symbol
+                            username = username_text.split('\n')[0].replace('@', '').strip()
+                except:
+                    pass
+                
+                # Extract hashtags from text
+                hashtags = re.findall(r'#(\w+)', text)
+                
                 tweets.append(RawTweet(
+                    tweet_id=tweet_id,
                     content=text.replace('\n', ' '),
-                    source_id="unknown",
+                    original_content=text,
+                    username=username,
                     timestamp=datetime.now().timestamp(),
-                    author="unknown",
-                    url=url
+                    url=url,
+                    hashtags=hashtags,
+                    metrics=None
                 ))
                 
-                print(f"   [TwitterSource] Extracted tweet {idx+1}/{len(articles)}")
+                print(f"   [TwitterSource] Extracted tweet {idx+1}: ID={tweet_id[:20]}..., user={username}, tags={hashtags}")
                 
             except Exception as e:
                 print(f"   [TwitterSource] ⚠️  Failed to extract tweet {idx+1}: {e}")
