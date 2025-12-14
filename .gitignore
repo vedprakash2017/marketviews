@@ -7,4 +7,9 @@ pw-browsers
 *.png
 *.html
 twitter_*
+
+# Tests (temporary - for now)
+tests/
+test_*.py
+*_test.py
 *.pyc

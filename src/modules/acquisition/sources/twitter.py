@@ -98,13 +98,8 @@ class TwitterPlaywrightSource(IDataSource):
         try:
             self.page.goto(url, timeout=page_timeout)
             
-            # Random initial wait
-            initial_wait = random.uniform(
-                TwitterSettings.INITIAL_WAIT_MIN,
-                TwitterSettings.INITIAL_WAIT_MAX
-            )
-            print(f"   [TwitterSource] ⏳ Initial wait: {initial_wait:.1f}s...")
-            time.sleep(initial_wait)
+            # No initial wait - page.goto already waited for page load
+            print(f"   [TwitterSource] ✓ Page loaded, starting scroll...")
             
             # Multiple scrolls with random waits
             for i in range(TwitterSettings.SCROLL_ITERATIONS):

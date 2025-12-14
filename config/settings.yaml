@@ -8,10 +8,28 @@ acquisition:
   source_type: "twitter"  
   
   twitter:
+    # Browser settings
     headless: false       # Set to true for production server
-    user_data_dir: "./user_data" # Where to store cookies
-    max_scrolls: 5        # Safety limit to prevent infinite loops
-    scroll_delay: 2.5     # Seconds between scrolls (Humanize)
+    user_data_dir: "./user_data"
+    
+    # Page load settings - VERY LONG for slow X.com loading
+    page_load_timeout_min: 120   # Minimum timeout (seconds)
+    page_load_timeout_max: 200   # Maximum timeout (seconds)
+    
+    # Scroll settings - VERY LONG waits for lazy loading
+    scroll_iterations: 3          # Number of times to scroll
+    scroll_distance_min: 500      # Min pixels to scroll
+    scroll_distance_max: 1000     # Max pixels to scroll
+    scroll_wait_min: 25           # Min seconds to wait after scroll
+    scroll_wait_max: 45           # Max seconds to wait after scroll
+    
+    # Extraction settings
+    extraction_pause_min: 1       # Min seconds between extracting tweets
+    extraction_pause_max: 3       # Max seconds between extracting tweets
+    
+    # Legacy (keep for compatibility)
+    max_scrolls: 5
+    scroll_delay: 2.5
     
   # Targets
   targets:
