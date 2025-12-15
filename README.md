@@ -1,38 +1,75 @@
-# Market Intelligence System
 
-Real-time Twitter scraper and sentiment analyzer for Indian stock market signals.
+# Market System
+
+Real-time Twitter scraper and sentiment analyser for Indian stock market signals.
 
 ## Setup
 
-# 1. Install dependencies
+### 1\. Install dependencies
+
+```bash
 pip install -r requirements.txt
 playwright install chromium
+```
 
-# 2. Start Redis
+### 2\. Start Redis
+
+```bash
 redis-server
+```
 
-# 3. Add cookies
-# Export cookies from your browser for x.com and save as:
-# config/cookies.json## Usage
+### 3\. Add cookies
 
-# Start the system
-python main.py## Monitoring
+Export cookies from your browser for `x.com` and save the file to:
+`config/cookies.json`
 
-# Watch live trading signals, consumer for signals
+-----
+
+## Usage
+
+**Start the system:**
+
+```bash
+python main.py
+```
+
+-----
+
+## Monitoring
+
+**Watch live trading signals (consumer for signals):**
+
+```bash
 python tests/run_analytics.py
+```
 
-# Watch system logs, consumer for logs
-python tests/run_log_collector.py## Configuration
+**Watch system logs (consumer for logs):**
 
-Edit `config/settings.yaml` to change targets or timing:
+```bash
+python tests/run_log_collector.py
+```
 
+-----
+
+## Configuration
+
+Edit `config/settings.yaml` to change targets or timing.
+
+```yaml
 acquisition:
   targets: ["#nifty50", "#banknifty", "#sensex"]
   twitter:
     cooldown_min: 480  # 8 minutes
-    query_limit: 100   # tweets per cycle## Architecture
+    query_limit: 100   # tweets per cycle
+```
 
-1. **Scraper**: Collects tweets using Playwright (stealth mode)
-2. **Processor**: Cleans text and removes duplicates (Redis)
-3. **Analytics**: Scores sentiment + user credibility + viral stats
-4. **Storage**: Saves raw data to Parquet files
+-----
+
+## Architecture
+
+1.  **Scraper**: Collects tweets using Playwright (stealth mode).
+2.  **Processor**: Cleans text and removes duplicates (Redis).
+3.  **Analytics**: Scores sentiment + user credibility + viral stats.
+4.  **Storage**: Saves raw data to Parquet files.
+
+-----

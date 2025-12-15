@@ -1,81 +1,81 @@
-# Market Intelligence System Architecture
+# System Architecture
+
+## Data & Control Flow
 
 ```mermaid
-graph TD
-    subgraph Orchestration
-        A[main.py] --> B(LogCollector Thread)
-        A --> C(AcquisitionWorker Process)
-        A --> D(ProcessingManager Process)
-        A --> E(AnalyticsWorker Process)
-        A --> F(StorageWorker Process)
+graph TB
+    %% --- Nodes ---
+    
+    subgraph Orchestrator
+        MAIN[main.py]
+        LOG_COLLECT[Log Collector]
     end
 
-    subgraph Data Flow
-        C -- RawTweet (Queue) --> D_W(ProcessingWorker Processes)
-        D_W -- CleanTweet (Redis Stream) --> E
-        D_W -- CleanTweet (Redis Stream) --> F
-        E -- TradeSignal (Redis Pub/Sub) --> G(Live Signal Output)
-        B -- Log Entries (Redis Pub/Sub) --> H(Log Files)
+    subgraph "Module 1: Acquisition"
+        SCRAPER[Scraper Worker]
+        BROWSER[Playwright Browser]
     end
 
-    subgraph Modules
-        C_S[AcquisitionWorker] --> C_T(TwitterPlaywrightSource)
-        D_W --> D_P(ProcessingPipeline)
-        D_P --> D_TC(TextCleaningStep)
-        D_P --> D_RD(RedisDedupStep)
-        E --> E_H(HybridSignalEngine)
-        F --> F_P(ParquetRepository)
+    subgraph "Module 2: Processing"
+        PROC[Processing Workers x2]
+        CLEAN[Text Cleaning]
+        DEDUP[Redis Dedup]
     end
 
-    subgraph Shared Services
-        RedisBus -- Deduplication --> D_RD
-        RedisBus -- Stream:clean_tweets --> D_W
-        RedisBus -- Stream:clean_tweets --> E
-        RedisBus -- Stream:clean_tweets --> F
-        RedisBus -- Channel:live_signals --> E
-        RedisBus -- Channel:logs --> B
-        RedisBus -- Channel:logs --> I(CentralLogger)
+    subgraph "Module 3: Analytics"
+        ANALYTICS[Analytics Worker]
+        ENGINE[Hybrid Signal Engine]
     end
 
-    subgraph Data Storage
-        F_P --> J(Parquet Files)
-        H --> K(Hourly Log Files)
+    subgraph "Module 4: Storage"
+        STORAGE[Storage Worker]
+        DISK[(Parquet Files)]
     end
 
-    subgraph Configuration
-        L(config/settings.yaml) --> A
-        L --> C
-        L --> E
-        L --> F
-        L --> I
+    subgraph Infrastructure
+        QUEUE((Multiprocess Queue))
+        STREAM[(Redis Stream: clean_tweets)]
+        PUBSUB((Redis Pub/Sub: live_signals))
+        LOGS[Disk Logs: data/logs/]
     end
 
-    subgraph Data Models
-        M(RawTweet)
-        N(CleanTweet)
-        O(TradeSignal)
-    end
+    %% --- Connections ---
 
-    C --> M
-    D_W --> M
-    D_W --> N
-    E --> N
-    E --> O
-    F --> N
+    %% Control Flow (Spawning)
+    MAIN ==>|Spawn Process| SCRAPER
+    MAIN ==>|Spawn Process| PROC
+    MAIN ==>|Spawn Process| ANALYTICS
+    MAIN ==>|Spawn Process| STORAGE
+    MAIN -.->|Thread| LOG_COLLECT
 
-    style A fill:#f9f,stroke:#333,stroke-width:2px
-    style B fill:#bbf,stroke:#333,stroke-width:2px
-    style C fill:#bbf,stroke:#333,stroke-width:2px
-    style D fill:#bbf,stroke:#333,stroke-width:2px
-    style E fill:#bbf,stroke:#333,stroke-width:2px
-    style F fill:#bbf,stroke:#333,stroke-width:2px
-    style G fill:#afa,stroke:#333,stroke-width:2px
-    style H fill:#afa,stroke:#333,stroke-width:2px
-    style I fill:#ccf,stroke:#333,stroke-width:2px
-    style J fill:#afa,stroke:#333,stroke-width:2px
-    style K fill:#afa,stroke:#333,stroke-width:2px
-    style L fill:#ffc,stroke:#333,stroke-width:2px
-    style M fill:#eee,stroke:#333,stroke-width:1px
-    style N fill:#eee,stroke:#333,stroke-width:1px
-    style O fill:#eee,stroke:#333,stroke-width:1px
+    %% Data Flow
+    SCRAPER -->|1. Fetch & Extract| BROWSER
+    BROWSER -->|Raw Tweets| SCRAPER
+    SCRAPER -->|2. Push Raw| QUEUE
+
+    QUEUE -->|3. Pop Raw| PROC
+    PROC -->|Clean| CLEAN
+    CLEAN -->|Check| DEDUP
+    DEDUP -->|4. Push Clean| STREAM
+
+    STREAM -->|5. Read Clean| ANALYTICS
+    ANALYTICS -->|Score| ENGINE
+    ENGINE -->|Signal| ANALYTICS
+    ANALYTICS -->|6. Publish Signal| PUBSUB
+
+    STREAM -->|7. Read Clean| STORAGE
+    STORAGE -->|8. Batch Write| DISK
+
+    %% Logging Flow
+    SCRAPER -.->|Log| LOG_COLLECT
+    PROC -.->|Log| LOG_COLLECT
+    ANALYTICS -.->|Log| LOG_COLLECT
+    STORAGE -.->|Log| LOG_COLLECT
+    LOG_COLLECT -.->|Write| LOGS
+
+    %% Styling
+    style MAIN fill:#f9f,stroke:#333,stroke-width:2px
+    style STREAM fill:#ff9,stroke:#333
+    style QUEUE fill:#ff9,stroke:#333
 ```
+
