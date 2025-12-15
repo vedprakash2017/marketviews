@@ -20,17 +20,15 @@ class TwitterPlaywrightSource(IDataSource):
         self.page = None
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.auth = TwitterAuth()
-
     def _connect_sync(self):
         """Sync version of connect to run in thread"""
         log_print("   [TwitterSource] Launching Browser...")
         self.playwright = sync_playwright().start()
         
-        # Launch with visible browser for debugging
-        chrome_path = "pw-browsers/chromium-1200/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+        # Simple launch config for Chrome
         self.browser = self.playwright.chromium.launch(
             headless=False,
-            executable_path=chrome_path,
+            channel="chrome",  # Explicitly asks for Google Chrome
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--disable-dev-shm-usage',
@@ -76,6 +74,64 @@ class TwitterPlaywrightSource(IDataSource):
         """)
         
         log_print("   [TwitterSource] Stealthy browser ready")
+    '''    
+    def _connect_sync(self):
+        """Sync version of connect to run in thread"""
+        log_print("   [TwitterSource] Launching Browser...")
+        self.playwright = sync_playwright().start()
+        
+        # Launch with visible browser for debugging
+        chrome_path = "pw-browsers/chromium-1200/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+        self.browser = self.playwright.chromium.launch(
+            headless=False,
+            channel: 'chrome',
+            # executable_path=chrome_path,
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
+            ]
+        )
+        
+        # Create context with realistic settings
+        self.context = self.browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={'width': 1920, 'height': 1080},
+            locale='en-US',
+            timezone_id='America/New_York',
+            permissions=['geolocation'],
+            extra_http_headers={
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
+        )
+        
+        # Load and inject cookies
+        if not self.auth.authenticate(self.context):
+            raise Exception("Failed to authenticate. Please provide cookies in config/cookies.json")
+        
+        # Create page and hide webdriver
+        self.page = self.context.new_page()
+        
+        # Hide automation detection
+        self.page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+            window.navigator.chrome = {
+                runtime: {}
+            };
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5]
+            });
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en']
+            });
+        """)
+        
+        log_print("   [TwitterSource] Stealthy browser ready")
+    '''
 
     async def connect(self):
         loop = asyncio.get_event_loop()

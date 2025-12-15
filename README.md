@@ -8,6 +8,9 @@ Real-time Twitter scraper and sentiment analyser for Indian stock market signals
 ### 1\. Install dependencies
 
 ```bash
+python3.13 -m venv env
+source env/bin/activate
+
 pip install -r requirements.txt
 playwright install chromium
 ```
@@ -20,7 +23,7 @@ redis-server
 
 ### 3\. Add cookies
 
-Export cookies from your browser for `x.com` and save the file to:
+Export cookies from your browser for `x.com` using the Cookie-Editor extension and save the file to:
 `config/cookies.json`
 
 -----
@@ -66,10 +69,5 @@ acquisition:
 -----
 
 ## Architecture
-
-1.  **Scraper**: Collects tweets using Playwright (stealth mode).
-2.  **Processor**: Cleans text and removes duplicates (Redis).
-3.  **Analytics**: Scores sentiment + user credibility + viral stats.
-4.  **Storage**: Saves raw data to Parquet files.
 
 -----
