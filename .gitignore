@@ -6,7 +6,7 @@ config/cookies.json
 pw-browsers
 *.png
 *.html
-twitter_*
+# twitter_*
 
 # Python cache
 __pycache__/
