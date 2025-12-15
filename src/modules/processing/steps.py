@@ -36,6 +36,9 @@ class TextCleaningStep(IPipelineStep):
         Returns:
             CleanTweet object with cleaned content, or None if invalid
         """
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%H:%M:%S')
+
         # 1. CPU Heavy Regex - Remove URLs
         text = self.url_pattern.sub('', tweet.content)
         
@@ -49,6 +52,7 @@ class TextCleaningStep(IPipelineStep):
         
         # 4. Validation: Skip if too short after cleaning
         if len(text) < 10:
+            print(f"[{timestamp}] [Processing] Dropped tweet {tweet.tweet_id}: Too short ({len(text)} chars)")
             return None
         
         # Create Clean Object
@@ -82,8 +86,12 @@ class RedisDedupStep(IPipelineStep):
         Returns:
             CleanTweet if unique, None if duplicate
         """
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%H:%M:%S')
+
         # I/O Bound Check
         if self.bus.is_duplicate(tweet.tweet_id):
+            print(f"[{timestamp}] [Processing] Dropped tweet {tweet.tweet_id}: Duplicate")
             return None  # Stop the chain - this is a duplicate
         return tweet
 

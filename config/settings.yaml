@@ -1,60 +1,61 @@
-
 app:
-  name: "MarketIntelligence_v1"
-  environment: "development"  
-  debug: true
+  name: "MarketIntel_v1"
 
+# --- MODULE 1: ACQUISITION ---
 acquisition:
-  source_type: "twitter"  
-  
-  twitter:
-    # Browser settings
-    headless: false       # Set to true for production server
-    user_data_dir: "./user_data"
-    
-    # Page load settings - VERY LONG for slow X.com loading
-    page_load_timeout_min: 140   # Minimum timeout (seconds)
-    page_load_timeout_max: 190   # Maximum timeout (seconds)
-    
-    # Scroll settings - VERY LONG waits for lazy loading
-    scroll_iterations: 3          # Number of times to scroll
-    scroll_distance_min: 500      # Min pixels to scroll
-    scroll_distance_max: 1000     # Max pixels to scroll
-    scroll_wait_min: 20           # Min seconds to wait after scroll
-    scroll_wait_max: 30           # Max seconds to wait after scroll
-    
-    # Extraction settings
-    extraction_pause_min: 1       # Min seconds between extracting tweets
-    extraction_pause_max: 3       # Max seconds between extracting tweets
-    
-    # Legacy (keep for compatibility)
-    max_scrolls: 5
-    scroll_delay: 2.5
-    
-  # Targets
+  source_type: "twitter"
   targets:
     - "#nifty50"
     - "#banknifty"
+    - "#sensex"
     - "#stockmarketindia"
+    - "#intraday"
+  
+  twitter:
+    # Page load settings
+    page_load_timeout_min: 180   # Min seconds to wait for page load
+    page_load_timeout_max: 240   # Max seconds to wait for page load
+    page_wait_until: "domcontentloaded"  # networkidle, domcontentloaded, load
     
-  # Loop Settings
-  loop_interval: 300      # Run every 5 minutes (300s)
+    # Scroll settings
+    scroll_iterations: 3         # Number of times to scroll
+    scroll_distance_min: 800     # Min pixels to scroll
+    scroll_distance_max: 1200    # Max pixels to scroll
+    scroll_wait_min: 25          # Min seconds to wait after scroll
+    scroll_wait_max: 45          # Max seconds to wait after scroll
+    
+    # Extraction settings
+    extraction_pause_min: 1      # Min seconds between extracting tweets
+    extraction_pause_max: 3      # Max seconds between extracting tweets
+    
+    # Cooldown between scrape cycles
+    cooldown_min: 120            # Min seconds (2 minutes)
+    cooldown_max: 300            # Max seconds (5 minutes)
+    
+    # Query settings
+    query_limit: 100             # Max tweets per scrape
+
+# --- REDIS ---
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
 
 # --- MODULE 2: PROCESSING ---
 processing:
+  workers_count: 2
   dedup_enabled: true
   bloom_filter_capacity: 100000
   bloom_filter_error_rate: 0.001
 
 # --- MODULE 4: STORAGE ---
 storage:
-  engine: "parquet"
-  output_path: "./data/raw"
-  batch_size: 50           # Write to disk after 50 tweets (small for testing)
-  compression: "snappy"
+  base_path: "data/raw"
+  batch_size: 50
+  flush_timeout: 60  # seconds
 
-# --- LOGGING ---
-logging:
-  level: "INFO"
-  save_to_file: true
-  file_path: "./logs/system.log"
+# --- MODULE 3: ANALYTICS ---
+analytics:
+  window_size: 50
+  confidence_threshold: 0.6
+  signal_threshold: 0.25

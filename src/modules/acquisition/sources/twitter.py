@@ -10,6 +10,7 @@ from src.shared.interfaces import IDataSource
 from src.shared.types import RawTweet  # Use Pydantic version with all fields
 from src.modules.acquisition.sources.twitter_auth import TwitterAuth
 from src.modules.acquisition.sources.twitter_settings import TwitterSettings
+from src.shared.log_utils import log_print
 
 class TwitterPlaywrightSource(IDataSource):
     def __init__(self):
@@ -22,7 +23,7 @@ class TwitterPlaywrightSource(IDataSource):
 
     def _connect_sync(self):
         """Sync version of connect to run in thread"""
-        print("   [TwitterSource] Launching Browser...")
+        log_print("   [TwitterSource] Launching Browser...")
         self.playwright = sync_playwright().start()
         
         # Launch with visible browser for debugging
@@ -74,7 +75,7 @@ class TwitterPlaywrightSource(IDataSource):
             });
         """)
         
-        print("   [TwitterSource] ✓ Stealthy browser ready!")
+        log_print("   [TwitterSource] Stealthy browser ready")
 
     async def connect(self):
         loop = asyncio.get_event_loop()
@@ -82,26 +83,27 @@ class TwitterPlaywrightSource(IDataSource):
 
     def _fetch_sync(self, query: str, limit: int) -> List[RawTweet]:
         """Sync version of fetch to run in thread"""
-        # Use hashtag URL format for queries starting with #
-        if query.startswith('#'):
-            url = f"https://x.com/hashtag/{query[1:]}?f=live"
-        else:
-            url = f"https://x.com/search?q={query}&f=live"
+        import urllib.parse
         
-        print(f"   [TwitterSource] Navigating to: {url}")
+        # Encode the query for URL (handles OR, hashtags, spaces)
+        encoded_query = urllib.parse.quote(query)
+        url = f"https://x.com/search?q={encoded_query}&f=live"
+        
+        log_print(f"   [TwitterSource] Navigating to: {url}")
+        log_print(f"   [TwitterSource] Raw query: {query}")
         
         # Random timeout between min and max (in milliseconds)
         page_timeout = random.randint(
             TwitterSettings.PAGE_LOAD_TIMEOUT_MIN * 1000,
             TwitterSettings.PAGE_LOAD_TIMEOUT_MAX * 1000
         )
-        print(f"   [TwitterSource] Page load timeout: {page_timeout/1000:.1f}s")
+        log_print(f"   [TwitterSource] Page load timeout: {page_timeout/1000:.1f}s")
         
         try:
             self.page.goto(url, timeout=page_timeout)
             
             # No initial wait - page.goto already waited for page load
-            print(f"   [TwitterSource] ✓ Page loaded, starting scroll...")
+            log_print(f"   [TwitterSource] Page loaded, starting scroll")
             
             # Multiple scrolls with random waits
             for i in range(TwitterSettings.SCROLL_ITERATIONS):
@@ -114,29 +116,29 @@ class TwitterPlaywrightSource(IDataSource):
                     TwitterSettings.SCROLL_WAIT_MAX
                 )
                 
-                print(f"   [TwitterSource] 📜 Scroll #{i+1}: {scroll_distance}px, wait {scroll_wait:.1f}s...")
+                log_print(f"   [TwitterSource] Scroll {i+1}: {scroll_distance}px, wait {scroll_wait:.1f}s")
                 self.page.evaluate(f"window.scrollBy(0, {scroll_distance})")
                 time.sleep(scroll_wait)
             
             # After all scrolling, check what we got
             tweet_count = self.page.locator('article[data-testid="tweet"]').count()
-            print(f"   [TwitterSource] ✓ Found {tweet_count} tweets in DOM after scrolling!")
+            log_print(f"   [TwitterSource] Found {tweet_count} tweets in DOM after scrolling")
             
             if tweet_count == 0:
-                print("   [TwitterSource] ❌ No tweets found after scrolling")
+                log_print("   [TwitterSource] No tweets found after scrolling")
                 self.page.screenshot(path="debug_error.png")
                 return []
             
         except Exception as e:
-            print(f"   [TwitterSource] ❌ Error: {e}")
+            log_print(f"   [TwitterSource] Error: {e}")
             self.page.screenshot(path="debug_error.png")
-            print("   [TwitterSource] 📸 Saved debug_error.png")
+            log_print("   [TwitterSource] Saved debug_error.png")
             return []
 
         # Extract ALL tweets found (no limit during extraction)
         tweets = []
         articles = self.page.locator('article[data-testid="tweet"]').all()
-        print(f"   [TwitterSource] 📝 Extracting from {len(articles)} articles...")
+        log_print(f"   [TwitterSource] Extracting from {len(articles)} articles")
         
         for idx, article in enumerate(articles):
             if len(tweets) >= limit:
@@ -151,8 +153,8 @@ class TwitterPlaywrightSource(IDataSource):
                     )
                     time.sleep(pause)
                 
-                # Extract tweet text
-                text = article.locator('div[data-testid="tweetText"]').inner_text()
+                # Extract tweet text - use .first to avoid strict mode errors
+                text = article.locator('div[data-testid="tweetText"]').first.inner_text()
                 
                 # Extract tweet ID from status URL
                 tweet_id = f"unknown_{idx}"  # Fallback
@@ -179,8 +181,23 @@ class TwitterPlaywrightSource(IDataSource):
                 except:
                     pass
                 
-                # Extract hashtags from text
-                hashtags = re.findall(r'#(\w+)', text)
+                # Extract hashtags
+                hashtags = []
+                # From text
+                text_tags = re.findall(r'#(\w+)', text)
+                hashtags.extend(text_tags)
+                
+                # From hashtag links
+                try:
+                    hash_links = article.locator('a[href*="/hashtag/"]').all()
+                    for link in hash_links:
+                        href = link.get_attribute('href')
+                        if href:
+                            tag = href.split('/hashtag/')[-1].split('?')[0]
+                            if tag and tag not in hashtags:
+                                hashtags.append(tag)
+                except:
+                    pass
                 
                 tweets.append(RawTweet(
                     tweet_id=tweet_id,
@@ -193,13 +210,13 @@ class TwitterPlaywrightSource(IDataSource):
                     metrics=None
                 ))
                 
-                print(f"   [TwitterSource] Extracted tweet {idx+1}: ID={tweet_id[:20]}..., user={username}, tags={hashtags}")
+                log_print(f"   [TwitterSource] Extracted tweet {idx+1}: ID={tweet_id[:20]}..., user={username}, tags={hashtags}")
                 
             except Exception as e:
-                print(f"   [TwitterSource] ⚠️  Failed to extract tweet {idx+1}: {e}")
+                log_print(f"   [TwitterSource] Failed to extract tweet {idx+1}: {e}")
                 continue
         
-        print(f"   [TwitterSource] ✓ Successfully extracted {len(tweets)} tweets!")
+        log_print(f"   [TwitterSource] Successfully extracted {len(tweets)} tweets")
         return tweets[:limit]  # Return only up to limit
 
     async def fetch_latest(self, query: str, limit: int = 10) -> List[RawTweet]:

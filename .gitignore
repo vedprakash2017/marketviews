@@ -8,8 +8,23 @@ pw-browsers
 *.html
 twitter_*
 
+# Python cache
+__pycache__/
+*/__pycache__/
+**/__pycache__/
+*.pyc
+*.py[cod]
+*$py.class
+
+# Redis
+*.rdb
+
 # Tests (temporary - for now)
 tests/
 test_*.py
 *_test.py
-*.pyc
+run_tests.sh
+
+# Logs
+*.log
+data/logs/

@@ -1,18 +1,17 @@
-# src/shared/utils.py
+"""
+Utility functions for the application
+"""
 import yaml
 from pathlib import Path
 
+
 def load_config(config_path: str = "config/settings.yaml") -> dict:
-    """
-    Loads the YAML config file and returns a dictionary.
-    """
+    """Load configuration from YAML file"""
     path = Path(config_path)
     if not path.exists():
-        raise FileNotFoundError(f"Config file not found at {path.absolute()}")
+        raise FileNotFoundError(f"Config file not found: {config_path}")
     
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
+    with open(path, 'r') as f:
+        config = yaml.safe_load(f)
 
-# Usage Example:
-# config = load_config()
-# headless_mode = config['acquisition']['twitter']['headless']
+    return config
