@@ -70,4 +70,9 @@ acquisition:
 
 ## Architecture
 
+1.  **Scraper**: Collects tweets using Playwright (stealth mode).
+2.  **Processor**: Cleans text and removes duplicates (Redis).
+3.  **Analytics**: Scores sentiment + user credibility + viral stats.
+4.  **Storage**: Saves raw data to Parquet files.
+
 -----
