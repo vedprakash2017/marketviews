@@ -292,3 +292,4 @@ class TwitterPlaywrightSource(IDataSource):
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(self.executor, self._close_sync)
         self.executor.shutdown(wait=True)
+

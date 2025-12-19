@@ -7,6 +7,7 @@ from collections import deque
 from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Dict, Optional, Tuple
 from pydantic import BaseModel
+import sys  # Added for flushing stdout
 
 from src.shared.types import CleanTweet
 from config.influencers import CATEGORICAL_TAGS
@@ -57,7 +58,7 @@ class HybridSignalEngine:
         self.signals_generated = 0
     
     def initialize(self):
-        print("[Analytics] Initializing signal engine...")
+        print("[Analytics] Initializing signal engine...", flush=True)
         
         seed_corpus = [
             "market breakout nifty banknifty high upper circuit",
@@ -74,28 +75,25 @@ class HybridSignalEngine:
         
         self.vectorizer.fit(seed_corpus)
         self.is_fitted = True
-        print(f"[Analytics] Vocab: {len(self.vectorizer.vocabulary_)}, Lexicon: {len(self.lexicon)}, Sources: {len(CATEGORICAL_TAGS['verified_news']) + len(CATEGORICAL_TAGS['influencer'])}")
+        print(f"[Analytics] Vocab: {len(self.vectorizer.vocabulary_)}, Lexicon: {len(self.lexicon)}", flush=True)
     
     def _get_user_score(self, username: str) -> Tuple[float, str]:
         u = username.lower().replace('@', '').strip()
-        
-        for news in CATEGORICAL_TAGS['verified_news']:
-            if news in u:
-                return self.user_tiers['verified_news'], "News"
-        
-        for inf in CATEGORICAL_TAGS['influencer']:
-            if inf in u:
-                return self.user_tiers['influencer'], "Influencer"
-        
+        for news in CATEGORICAL_TAGS.get('verified_news', []):
+            if news in u: return self.user_tiers['verified_news'], "News"
+        for inf in CATEGORICAL_TAGS.get('influencer', []):
+            if inf in u: return self.user_tiers['influencer'], "Influencer"
         return self.user_tiers['default'], "Random"
     
     def predict(self, tweet: CleanTweet) -> Optional[TradeSignal]:
         if not self.is_fitted:
+            print("[Analytics] Error: Engine not fitted!", flush=True)
             return None
         
         self.total_processed += 1
         factors = []
         
+        # --- 1. Calculate Scores ---
         # Text score
         words = tweet.content.lower().split()
         text_raw = 0.0
@@ -104,61 +102,62 @@ class HybridSignalEngine:
         for word in words:
             if word in self.lexicon:
                 direction = self.lexicon[word]
-                
-                try:
-                    word_idx = self.vectorizer.vocabulary_.get(word)
-                    if word_idx is not None:
-                        idf = self.vectorizer.idf_[word_idx]
-                    else:
-                        idf = 1.0
-                except:
-                    idf = 1.0
-                
+                # Simple IDF lookup (safe)
+                word_idx = self.vectorizer.vocabulary_.get(word)
+                idf = self.vectorizer.idf_[word_idx] if word_idx is not None else 1.0
                 text_raw += direction * idf
                 matched_words.append(word)
         
         text_score = max(-1.0, min(1.0, text_raw / 5.0))
         factors.append(f"Text: {text_score:.2f} ({len(matched_words)} words)")
         
-        # User score
+        # User & Engagement score
         user_score, user_type = self._get_user_score(tweet.username)
-        factors.append(f"Source: {user_type} ({user_score:.1f})")
-        
-        # Engagement score
         likes = tweet.metrics.likes if tweet.metrics else 0
         eng_score = min(1.0, np.log10(likes + 1) / 4.0)
-        factors.append(f"Viral: {eng_score:.2f} ({likes} likes)")
         
         # Composite calculation
         direction_sign = 1.0 if text_score >= 0 else -1.0
-        
         composite = direction_sign * (
             (0.5 * abs(text_score)) +
             (0.3 * user_score) +
             (0.2 * eng_score)
         )
         
-        # Statistical aggregation
-        ticker = "nifty50"
-        if tweet.hashtags:
-            ticker = tweet.hashtags[0].lower()
+        # # --- 2. Determine Ticker ---
+        # ticker = "nifty50"
+        # if tweet.hashtags:
+        #     ticker = tweet.hashtags[0].lower()
         
+        # # We print THIS specific tweet's analysis immediately
+        # print(f"   > Analysis [{ticker.upper()}]: Text={text_score:.2f} | User={user_score:.1f} | Comp={composite:.3f}", flush=True)
+
+        # # --- 4. Window Aggregation ---
+        
+        ticker = 'market'
         if ticker not in self.windows:
             self.windows[ticker] = deque(maxlen=self.window_size)
         
+
         self.windows[ticker].append(composite)
         
-        if len(self.windows[ticker]) < 5:
+        # Check window size
+        curr_len = len(self.windows[ticker])
+        if curr_len < 5:
+            # Print that we are waiting
+            print(f"     ... Warming up {ticker.upper()}: {curr_len}/5 tweets collected", flush=True)
             return None
         
+        # --- 5. Generate Signal ---
         data = np.array(self.windows[ticker])
         mean_score = float(np.mean(data))
         std_dev = float(np.std(data))
         confidence = max(0.0, 1.0 - std_dev)
         
-        # Signal generation
-        signal = "HOLD"
+        # Print the final calculation stats
+        print(f"     *** STATS {ticker.upper()}: Mean={mean_score:.3f} | Conf={confidence:.3f} ***", flush=True)
         
+        signal = "HOLD"
         if mean_score > 0.25 and confidence > 0.6:
             signal = "BUY"
             self.signals_generated += 1
@@ -166,6 +165,8 @@ class HybridSignalEngine:
             signal = "SELL"
             self.signals_generated += 1
         
+        # ONLY return if it's an actionable signal or if we want to log HOLDs too
+        # For now, let's return the object so the worker can decide what to log
         return TradeSignal(
             timestamp=tweet.timestamp,
             ticker=ticker.upper(),
