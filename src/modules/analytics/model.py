@@ -7,9 +7,9 @@ from collections import deque
 from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Dict, Optional, Tuple
 from pydantic import BaseModel
-import sys  # Added for flushing stdout
 
 from src.shared.types import CleanTweet
+from src.shared.logger import get_logger
 from config.influencers import CATEGORICAL_TAGS
 
 
@@ -27,7 +27,7 @@ class TradeSignal(BaseModel):
 class HybridSignalEngine:
     """Generates trading signals from tweet analysis"""
     
-    def __init__(self, window_size: int = 50):
+    def __init__(self, window_size: int = 50, redis_config: dict = None):
         self.vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
         
         self.lexicon = {
@@ -56,9 +56,10 @@ class HybridSignalEngine:
         self.is_fitted = False
         self.total_processed = 0
         self.signals_generated = 0
+        self.logger = get_logger("HybridSignalEngine", redis_config=redis_config or {'host': 'localhost', 'port': 6379})
     
     def initialize(self):
-        print("[Analytics] Initializing signal engine...", flush=True)
+        self.logger.info("Initializing signal engine...")
         
         seed_corpus = [
             "market breakout nifty banknifty high upper circuit",
@@ -75,7 +76,7 @@ class HybridSignalEngine:
         
         self.vectorizer.fit(seed_corpus)
         self.is_fitted = True
-        print(f"[Analytics] Vocab: {len(self.vectorizer.vocabulary_)}, Lexicon: {len(self.lexicon)}", flush=True)
+        self.logger.info(f"Vocab: {len(self.vectorizer.vocabulary_)}, Lexicon: {len(self.lexicon)}")
     
     def _get_user_score(self, username: str) -> Tuple[float, str]:
         u = username.lower().replace('@', '').strip()
@@ -87,7 +88,7 @@ class HybridSignalEngine:
     
     def predict(self, tweet: CleanTweet) -> Optional[TradeSignal]:
         if not self.is_fitted:
-            print("[Analytics] Error: Engine not fitted!", flush=True)
+            self.logger.error("Engine not fitted!")
             return None
         
         self.total_processed += 1
@@ -144,8 +145,8 @@ class HybridSignalEngine:
         # Check window size
         curr_len = len(self.windows[ticker])
         if curr_len < 5:
-            # Print that we are waiting
-            print(f"     ... Warming up {ticker.upper()}: {curr_len}/5 tweets collected", flush=True)
+            # Log that we are waiting
+            self.logger.debug(f"Warming up {ticker.upper()}: {curr_len}/5 tweets collected")
             return None
         
         # --- 5. Generate Signal ---
@@ -154,8 +155,8 @@ class HybridSignalEngine:
         std_dev = float(np.std(data))
         confidence = max(0.0, 1.0 - std_dev)
         
-        # Print the final calculation stats
-        print(f"     *** STATS {ticker.upper()}: Mean={mean_score:.3f} | Conf={confidence:.3f} ***", flush=True)
+        # Log the final calculation stats
+        self.logger.debug(f"STATS {ticker.upper()}: Mean={mean_score:.3f} | Conf={confidence:.3f}")
         
         signal = "HOLD"
         if mean_score > 0.25 and confidence > 0.6:

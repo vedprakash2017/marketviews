@@ -10,7 +10,6 @@ from typing import List
 
 from src.shared.logger import get_logger
 from src.modules.acquisition.sources.twitter import TwitterPlaywrightSource
-from src.shared.log_utils import log_print
 
 
 class AcquisitionWorker:
@@ -29,6 +28,10 @@ class AcquisitionWorker:
         
         self.cycle_count = 0
         self.total_scraped = 0
+        
+        # Initialize logger with redis config
+        redis_config = config.get('redis', {'host': 'localhost', 'port': 6379})
+        self.logger = get_logger("AcquisitionWorker", redis_config=redis_config)
     
     def _build_super_query(self) -> str:
         tags_clean = [tag.lstrip('#').strip() for tag in self.tags]
@@ -37,16 +40,16 @@ class AcquisitionWorker:
     
     async def run_async(self):
         """Main scraping loop"""
-        log_print("[Scraper] Worker started")
+        self.logger.info("Worker started")
         
         # Initialize source in subprocess (after fork)
-        self.source = TwitterPlaywrightSource()
+        self.source = TwitterPlaywrightSource(redis_config=self.config.get('redis', {'host': 'localhost', 'port': 6379}))
         
         try:
             await self.source.connect()
-            log_print("[Scraper] Connected to Twitter")
+            self.logger.info("Connected to Twitter")
         except Exception as e:
-            log_print(f"[Scraper] Failed to connect: {e}")
+            self.logger.error(f"Failed to connect: {e}")
             return
         
         # Build super query once
@@ -55,21 +58,18 @@ class AcquisitionWorker:
         cooldown_min = self.config.get('twitter', {}).get('cooldown_min', 480)
         cooldown_max = self.config.get('twitter', {}).get('cooldown_max', 720)
         
-        log_print(f"[Scraper] Starting super-cycle")
-        log_print(f"[Scraper] Query: {super_query}")
-        log_print(f"[Scraper] Limit: {query_limit} tweets")
-        log_print(f"[Scraper] Cooldown: {cooldown_min/60:.0f}-{cooldown_max/60:.0f} minutes")
+        self.logger.info("Starting super-cycle", query=super_query, limit=query_limit, cooldown_minutes=f"{cooldown_min/60:.0f}-{cooldown_max/60:.0f}")
         
         while True:
             try:
                 self.cycle_count += 1
-                log_print(f"\n[Scraper] Cycle {self.cycle_count}: Query={super_query}")
+                self.logger.info(f"Cycle {self.cycle_count}", query=super_query)
                 
                 # The heavy lift - long waits
                 tweets = await self.source.fetch_latest(super_query, limit=query_limit)
                 
                 if tweets:
-                    log_print(f"[Scraper] Harvested {len(tweets)} tweets")
+                    self.logger.info(f"Harvested {len(tweets)} tweets")
                     
                     # Push to processing queue
                     for tweet in tweets:
@@ -77,26 +77,25 @@ class AcquisitionWorker:
                     
                     self.total_scraped += len(tweets)
                 else:
-                    log_print("[Scraper] Zero tweets found (check selectors/cookies)")
+                    self.logger.warning("Zero tweets found (check selectors/cookies)")
                 
                 # Cooldown: 8-12 minutes
                 sleep_time = random.uniform(cooldown_min, cooldown_max)
                 minutes = sleep_time / 60
                 
-                log_print(f"[Scraper] Cooling down for {minutes:.1f} minutes...")
-                log_print(f"[Scraper] Total scraped: {self.total_scraped} tweets")
+                self.logger.info(f"Cooling down for {minutes:.1f} minutes...", total_scraped=self.total_scraped)
                 
                 time.sleep(sleep_time)
                 
             except KeyboardInterrupt:
-                log_print("[Scraper] Shutdown requested")
+                self.logger.info("Shutdown requested")
                 break
             except Exception as e:
-                log_print(f"[Scraper] Cycle {self.cycle_count} failed: {e}")
+                self.logger.error(f"Cycle {self.cycle_count} failed: {e}")
                 time.sleep(60)
         
         await self.source.close()
-        log_print(f"[Scraper] Worker stopped. Total: {self.total_scraped} tweets, {self.cycle_count} cycles")
+        self.logger.info(f"Worker stopped", total_tweets=self.total_scraped, total_cycles=self.cycle_count)
     
     def run_process(self):
         """Entry point for multiprocessing.Process"""

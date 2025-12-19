@@ -1,17 +1,19 @@
 import json
 import os
-from src.shared.log_utils import log_print
+from typing import Optional
 from pathlib import Path
 from playwright.sync_api import BrowserContext
+from src.shared.logger import get_logger
 
 class TwitterAuth:
-    def __init__(self, cookie_path: str = "config/cookies.json"):
+    def __init__(self, cookie_path: str = "config/cookies.json", redis_config: Optional[dict] = None):
         self.cookie_path = Path(cookie_path)
+        self.logger = get_logger("TwitterAuth", redis_config=redis_config or {'host': 'localhost', 'port': 6379})
 
     def authenticate(self, context: BrowserContext) -> bool:
         if not self.cookie_path.exists():
-            log_print(f"   [Auth] CRITICAL: No cookie file found at {self.cookie_path}")
-            log_print("   [Auth] Please export cookies from your browser and save them.")
+            self.logger.critical(f"No cookie file found at {self.cookie_path}")
+            self.logger.critical("Please export cookies from your browser and save them.")
             return False
 
         try:
@@ -33,9 +35,9 @@ class TwitterAuth:
                 clean_cookies.append(new_cookie)
 
             context.add_cookies(clean_cookies)
-            log_print(f"   [Auth] Injected {len(clean_cookies)} cookies")
+            self.logger.info(f"Injected {len(clean_cookies)} cookies")
             return True
 
         except Exception as e:
-            log_print(f"   [Auth] Failed to inject cookies: {e}")
+            self.logger.error(f"Failed to inject cookies: {e}")
             return False

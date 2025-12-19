@@ -9,7 +9,7 @@ from typing import List
 from src.shared.bus import RedisBus
 from src.shared.types import CleanTweet
 from src.shared.interfaces import IDataRepository
-from src.shared.log_utils import log_print
+from src.shared.logger import get_logger
 
 
 class StorageWorker:
@@ -39,6 +39,9 @@ class StorageWorker:
     self.total_processed = 0
     self.total_batches = 0
     
+    # Logger
+    self.logger = get_logger("StorageWorker", redis_config=redis_config)
+    
   async def flush_buffer(self):
     """
     Offloads the blocking write operation to a separate thread.
@@ -57,7 +60,7 @@ class StorageWorker:
       self.last_flush = time.time()
       
       # RUN IN THREAD: This keeps the Event Loop alive
-      log_print(f"[Storage] Flushing {len(current_batch)} items...")
+      self.logger.info(f"Flushing {len(current_batch)} items...")
       
       # asyncio.to_thread runs blocking code in a ThreadPoolExecutor
       await asyncio.to_thread(self.repo.save_batch, current_batch)
@@ -66,13 +69,13 @@ class StorageWorker:
       # Only ACK after successful write. If write fails, these return to Redis.
       if current_ids:
         self.bus.client.xack("stream:clean_tweets", "storage_group", *current_ids)
-        log_print(f"[Storage] ACKed {len(current_ids)} messages")
+        self.logger.debug(f"ACKed {len(current_ids)} messages")
       
       self.total_processed += len(current_batch)
       self.total_batches += 1
       
     except Exception as e:
-      log_print(f"[Storage] Flush failed (Data stays in Redis): {e}")
+      self.logger.error(f"Flush failed (Data stays in Redis): {e}")
       # Don't re-raise - let the worker continue
   
   async def run(self):
@@ -82,8 +85,8 @@ class StorageWorker:
     2. Buffer messages
     3. Flush when triggers fire
     """
-    log_print("[Storage] Worker Started")
-    log_print(f"[Storage] Config: batch_size={self.BATCH_SIZE}, flush_timeout={self.FLUSH_TIMEOUT}s")
+    self.logger.info("Worker Started")
+    self.logger.info(f"Config: batch_size={self.BATCH_SIZE}, flush_timeout={self.FLUSH_TIMEOUT}s")
     
     # Ensure Consumer Group Exists
     try:
@@ -93,9 +96,9 @@ class StorageWorker:
         id='0', # Start from beginning
         mkstream=True
       )
-      log_print("[Storage] Created consumer group 'storage_group'")
+      self.logger.info("Created consumer group 'storage_group'")
     except Exception:
-      log_print("[Storage] Consumer group 'storage_group' already exists")
+      self.logger.info("Consumer group 'storage_group' already exists")
     
     while True:
       try:
@@ -123,29 +126,27 @@ class StorageWorker:
         is_stale = (time.time() - self.last_flush) > self.FLUSH_TIMEOUT
         
         if is_full:
-          log_print(f"[Storage] Buffer full ({len(self.buffer)} items), flushing...")
+          self.logger.info(f"Buffer full ({len(self.buffer)} items), flushing...")
           await self.flush_buffer()
         elif is_stale and self.buffer:
-          log_print(f"[Storage] Timeout reached ({self.FLUSH_TIMEOUT}s), flushing {len(self.buffer)} items...")
+          self.logger.info(f"Timeout reached ({self.FLUSH_TIMEOUT}s), flushing {len(self.buffer)} items...")
           await self.flush_buffer()
         
         # Yield control to event loop
         await asyncio.sleep(0.01)
         
       except KeyboardInterrupt:
-        log_print("\n[Storage] Shutting down...")
+        self.logger.info("Shutting down...")
         if self.buffer:
-          log_print(f"[Storage] Flushing remaining {len(self.buffer)} items...")
+          self.logger.info(f"Flushing remaining {len(self.buffer)} items...")
           await self.flush_buffer()
         break
       except Exception as e:
-        log_print(f"[Storage] Crash in loop: {e}")
+        self.logger.error(f"Crash in loop: {e}")
         await asyncio.sleep(1)
     
     # Final stats
-    log_print(f"\n[Storage] Stats:")
-    log_print(f" Total processed: {self.total_processed} tweets")
-    log_print(f" Total batches: {self.total_batches}")
+    self.logger.info("Stats", total_processed=self.total_processed, total_batches=self.total_batches)
 
 
 class StorageManager:

@@ -8,9 +8,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pathlib import Path
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from src.shared.interfaces import IDataRepository
 from src.shared.types import CleanTweet
+from src.shared.logger import get_logger
 
 
 class ParquetRepository(IDataRepository):
@@ -21,10 +22,11 @@ class ParquetRepository(IDataRepository):
   - PyArrow for performance
   """
   
-  def __init__(self, base_path: str = "data/raw", compression: str = "snappy"):
+  def __init__(self, base_path: str = "data/raw", compression: str = "snappy", redis_config: Optional[dict] = None):
     self.base_path = Path(base_path)
     self.compression = compression
     self.base_path.mkdir(parents=True, exist_ok=True)
+    self.logger = get_logger("ParquetRepository", redis_config=redis_config or {'host': 'localhost', 'port': 6379})
     
   def _get_partition_folder(self, timestamp: float) -> Path:
     """
@@ -83,10 +85,10 @@ class ParquetRepository(IDataRepository):
         compression=self.compression
       )
       
-      print(f"[Storage] Saved {len(tweets)} tweets to {file_path}")
+      self.logger.info(f"Saved {len(tweets)} tweets to {file_path}")
       
     except Exception as e:
-      print(f"[Storage] Failed to write batch: {e}")
+      self.logger.error(f"Failed to write batch: {e}")
       raise e # Re-raise to prevent ACK in worker
   
   def load_range(self, start: datetime, end: datetime) -> pd.DataFrame:

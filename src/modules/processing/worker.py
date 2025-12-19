@@ -8,7 +8,7 @@ from src.shared.types import RawTweet
 from src.shared.bus import RedisBus
 from src.modules.processing.pipeline import ProcessingPipeline
 from src.modules.processing.steps import TextCleaningStep, RedisDedupStep
-from src.shared.log_utils import log_print
+from src.shared.logger import get_logger
 
 
 class ProcessingWorker(Process):
@@ -24,21 +24,22 @@ class ProcessingWorker(Process):
     self.input_queue = input_queue
     self.redis_config = redis_config
     self.daemon = True # Kill process if main app dies
+    self.logger = get_logger(f"ProcessingWorker-{worker_id}", redis_config=redis_config)
     
   def run(self):
     """
     This code runs in a separate OS Process.
     It shares NOTHING with the main process.
     """
-    log_print(f"[Processor-{self.worker_id}] Starting on PID {os.getpid()}")
+    self.logger.info(f"Starting on PID {os.getpid()}")
     
     # 1. Initialize Local Resources (Cannot be shared across processes)
     bus = RedisBus(**self.redis_config)
     
     # 2. Build Pipeline
     pipeline = ProcessingPipeline(steps=[
-      TextCleaningStep(),
-      RedisDedupStep(bus)
+      TextCleaningStep(redis_config=self.redis_config),
+      RedisDedupStep(bus, redis_config=self.redis_config)
     ])
     
     # 3. Consumption Loop
@@ -59,7 +60,7 @@ class ProcessingWorker(Process):
           bus.push_to_stream("stream:clean_tweets", result)
           processed_count += 1
           if processed_count % 10 == 0:
-            log_print(f"[Processor-{self.worker_id}] Processed {processed_count} tweets")
+            self.logger.info(f"Processed {processed_count} tweets")
         else:
           # Filtered out (duplicate or invalid)
           duplicate_count += 1
@@ -69,7 +70,7 @@ class ProcessingWorker(Process):
         # Only print actual errors, not queue timeouts
         if e.__class__.__name__ != 'Empty':
           error_count += 1
-          log_print(f"[Processor-{self.worker_id}] Error: {e}")
+          self.logger.error(f"Error: {e}")
         continue
 
 
@@ -77,9 +78,11 @@ class ProcessingManager:
   """
   Manages multiple ProcessingWorker processes
   """
-  def __init__(self, input_queue: Queue):
+  def __init__(self, input_queue: Queue, redis_config: dict = None):
     self.input_queue = input_queue
     self.workers = []
+    self.redis_config = redis_config or {'host': 'localhost', 'port': 6379}
+    self.logger = get_logger("ProcessingManager", redis_config=self.redis_config)
     
   def start(self, workers_count=None):
     """
@@ -92,24 +95,22 @@ class ProcessingManager:
     if not workers_count:
       workers_count = max(1, cpu_count() - 2)
       
-    log_print(f"[ProcessingManager] Spawning {workers_count} Processing Workers...")
-    
-    config = {'host': 'localhost', 'port': 6379}
+    self.logger.info(f"Spawning {workers_count} Processing Workers...")
     
     for i in range(workers_count):
-      worker = ProcessingWorker(i, self.input_queue, config)
+      worker = ProcessingWorker(i, self.input_queue, self.redis_config)
       worker.start()
       self.workers.append(worker)
       
-    log_print(f"[ProcessingManager] All workers started!")
+    self.logger.info("All workers started!")
     
   def stop(self):
     """Stop all workers"""
-    log_print("Stopping...")
+    self.logger.info("Stopping...")
     for worker in self.workers:
       worker.terminate()
       worker.join(timeout=5)
-    log_print(f"[ProcessingManager] All workers stopped!")
+    self.logger.info("All workers stopped!")
     
   def is_alive(self) -> bool:
     """Check if any workers are still running"""

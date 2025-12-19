@@ -3,9 +3,11 @@ Twitter scraper settings - loads from config/settings.yaml
 """
 import yaml
 from pathlib import Path
+from src.shared.logger import get_logger
 
 class TwitterSettings:
   def __init__(self):
+    self.logger = get_logger("TwitterSettings")
     config_path = Path("config/settings.yaml")
     if not config_path.exists():
       # Fallback to hardcoded values if no config
@@ -33,8 +35,8 @@ class TwitterSettings:
       self.EXTRACTION_PAUSE_MIN = twitter_config.get('extraction_pause_min', 1)
       self.EXTRACTION_PAUSE_MAX = twitter_config.get('extraction_pause_max', 3)
     except Exception as e:
-      print(f" Warning: Could not load settings.yaml: {e}")
-      print("  Using default values...")
+      self.logger.warning(f"Could not load settings.yaml: {e}")
+      self.logger.warning("Using default values...")
       self._use_defaults()
   
   def _use_defaults(self):

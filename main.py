@@ -43,7 +43,7 @@ def signal_handler(sig, frame):
 
 def run_storage_process(redis_config):
     """Wrapper to run async Storage Worker in a separate process"""
-    repo = ParquetRepository()
+    repo = ParquetRepository(redis_config=redis_config)
     worker = StorageWorker(repo, redis_config)
     asyncio.run(worker.run())
 
@@ -80,9 +80,12 @@ def main():
     os.makedirs("data/logs", exist_ok=True)
     os.makedirs("data/raw", exist_ok=True)
     
+    # Get Redis config
+    redis_config = config.get('redis', {'host': 'localhost', 'port': 6379})
+    
     # Start Log Collector (Background Thread)
     # This ensures logs are saved to data/logs/
-    log_collector = LogCollector(log_dir="data/logs")
+    log_collector = LogCollector(log_dir="data/logs", redis_config=redis_config)
     log_thread = threading.Thread(
         target=run_log_collector_thread, 
         args=(log_collector,), 
@@ -97,7 +100,6 @@ def main():
     # Shared queue
     raw_data_queue = Queue(maxsize=1000)
     
-    redis_config = config.get('redis', {'host': 'localhost', 'port': 6379})
     targets = config['acquisition']['targets']
     
     log_print("Starting...")
@@ -128,7 +130,7 @@ def main():
         time.sleep(1)
         
         # C. Processing Workers
-        processor = ProcessingManager(raw_data_queue)
+        processor = ProcessingManager(raw_data_queue, redis_config=redis_config)
         processor.start(workers_count=2)
         log_print(f"  Started Processing workers (2)")
         time.sleep(1)

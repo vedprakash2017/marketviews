@@ -6,6 +6,7 @@ import re
 from typing import Optional
 from src.shared.types import RawTweet, CleanTweet
 from src.shared.bus import RedisBus
+from src.shared.logger import get_logger
 
 
 class IPipelineStep:
@@ -21,10 +22,11 @@ class TextCleaningStep(IPipelineStep):
     - Normalize currency symbols
     - Strip extra whitespace
     """
-    def __init__(self):
+    def __init__(self, redis_config: dict = None):
         self.url_pattern = re.compile(r'https?://\S+|www\.\S+')
         self.currency_map = {"₹": "INR ", "$": "USD "}
         self.whitespace_pattern = re.compile(r'\s+')
+        self.logger = get_logger("TextCleaningStep", redis_config=redis_config or {'host': 'localhost', 'port': 6379})
         
     def execute(self, tweet: RawTweet) -> Optional[CleanTweet]:
         """
@@ -36,9 +38,6 @@ class TextCleaningStep(IPipelineStep):
         Returns:
             CleanTweet object with cleaned content, or None if invalid
         """
-        from datetime import datetime
-        timestamp = datetime.now().strftime('%H:%M:%S')
-
         # 1. CPU Heavy Regex - Remove URLs
         text = self.url_pattern.sub('', tweet.content)
         
@@ -52,7 +51,7 @@ class TextCleaningStep(IPipelineStep):
         
         # 4. Validation: Skip if too short after cleaning
         if len(text) < 10:
-            print(f"[{timestamp}] [Processing] Dropped tweet {tweet.tweet_id}: Too short ({len(text)} chars)")
+            self.logger.debug(f"Dropped tweet {tweet.tweet_id}: Too short ({len(text)} chars)")
             return None
         
         # Create Clean Object
@@ -73,8 +72,9 @@ class RedisDedupStep(IPipelineStep):
     Step 2: I/O-bound deduplication check
     Uses Redis to check if we've seen this tweet before
     """
-    def __init__(self, bus: RedisBus):
+    def __init__(self, bus: RedisBus, redis_config: dict = None):
         self.bus = bus
+        self.logger = get_logger("RedisDedupStep", redis_config=redis_config or {'host': 'localhost', 'port': 6379})
         
     def execute(self, tweet: CleanTweet) -> Optional[CleanTweet]:
         """
@@ -86,12 +86,9 @@ class RedisDedupStep(IPipelineStep):
         Returns:
             CleanTweet if unique, None if duplicate
         """
-        from datetime import datetime
-        timestamp = datetime.now().strftime('%H:%M:%S')
-
         # I/O Bound Check
         if self.bus.is_duplicate(tweet.tweet_id):
-            print(f"[{timestamp}] [Processing] Dropped tweet {tweet.tweet_id}: Duplicate")
+            self.logger.debug(f"Dropped tweet {tweet.tweet_id}: Duplicate")
             return None  # Stop the chain - this is a duplicate
         return tweet
 
